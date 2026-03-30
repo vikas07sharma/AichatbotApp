@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neural Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-elevated: #12121a;
+      --fg: #e8e8ec;
+      --muted: #6b6b7a;
+      --accent: #00d4aa;
+      --accent-dim: rgba(0, 212, 170, 0.15);
+      --card: #16161f;
+      --border: #2a2a3a;
+      --user-bubble: #1a3a4a;
+      --ai-bubble: #1a1a24;
+    }
+
+    [data-theme="light"] {
+      --bg: #f4f4f8;
+      --bg-elevated: #ffffff;
+      --fg: #1a1a2e;
+      --muted: #6b6b7a;
+      --accent: #00a88a;
+      --accent-dim: rgba(0, 168, 138, 0.12);
+      --card: #ffffff;
+      --border: #e0e0e8;
+      --user-bubble: #d4f5ef;
+      --ai-bubble: #f0f0f4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Background Grid Pattern */
+    .bg-grid {
+      background-image: 
+        linear-gradient(rgba(0, 212, 170, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 170, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Glow effects */
+    .glow-orb {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--muted);
+    }
+
+    /* Message animations */
+    @keyframes messageSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    @keyframes typing {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+
+    .message-enter {
+      animation: messageSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .typing-dot {
+      animation: typing 1s ease-in-out infinite;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.1s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.2s; }
+
+    /* Input focus ring */
+    .input-focus-ring:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--accent-dim), 0 0 20px var(--accent-dim);
+    }
+
+    /* Button hover effect */
+    .btn-hover {
+      transition: all 0.2s ease;
+    }
+
+    .btn-hover:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--accent-dim);
+    }
+
+    .btn-hover:active {
+      transform: translateY(0);
+    }
+
+    /* Sidebar item hover */
+    .sidebar-item {
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-item:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body class="h-screen flex bg-grid">
+  <!-- Ambient glow orbs -->
+  <div class="glow-orb" style="top: -200px; left: -200px;"></div>
+  <div class="glow-orb" style="bottom: -300px; right: -200px;"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-72 flex-shrink-0 border-r flex flex-col h-full" style="background: var(--bg-elevated); border-color: var(--border);">
+    <!-- Logo -->
+    <div class="p-5 border-b" style="border-color: var(--border);">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: var(--accent-dim); border: 1px solid var(--accent);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+            <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+            <path d="M12 12v10"/>
+            <path d="M8 18h8"/>
+            <circle cx="12" cy="6" r="1"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg tracking-tight" style="color: var(--fg);">Neural Chat</h1>
+          <p class="text-xs" style="color: var(--muted);">AI Assistant v2.0</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Chat Button -->
+    <div class="p-4">
+      <button id="newChatBtn" class="w-full py-3 px-4 rounded-xl font-medium text-sm flex items-center justify-center gap-2 btn-hover input-focus-ring" style="background: var(--accent); color: var(--bg);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        New Conversation
+      </button>
+    </div>
+
+    <!-- Chat History -->
+    <div class="flex-1 overflow-y-auto px-4 pb-4">
+      <p class="text-xs font-medium uppercase tracking-wider mb-3" style="color: var(--muted);">Recent Chats</p>
+      <div id="chatHistory" class="space-y-2">
+        <!-- History items will be inserted here -->
+      </div>
+    </div>
+
+    <!-- Theme Toggle & User -->
+    <div class="p-4 border-t" style="border-color: var(--border);">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium" style="background: var(--accent-dim); color: var(--accent);">
+            U
+          </div>
+          <span class="text-sm font-medium">User</span>
+        </div>
+        <button id="themeToggle" class="w-9 h-9 rounded-lg flex items-center justify-center transition-colors" style="background: var(--card); border: 1px solid var(--border);" aria-label="Toggle theme">
+          <svg id="sunIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg id="moonIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Chat Area -->
+  <main class="flex-1 flex flex-col h-full relative">
+    <!-- Header -->
+    <header class="h-16 flex items-center justify-between px-6 border-b" style="background: var(--bg-elevated); border-color: var(--border);">
+      <div class="flex items-center gap-3">
+        <button id="mobileMenuBtn" class="lg:hidden w-9 h-9 rounded-lg flex items-center justify-center" style="background: var(--card); border: 1px solid var(--border);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+        </button>
+        <div>
+          <h2 id="chatTitle" class="font-medium">New Conversation</h2>
+          <p class="text-xs" style="color: var(--muted);">Powered by Neural Engine</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full animate-pulse" style="background: var(--accent);"></div>
+        <span class="text-xs font-mono" style="color: var(--muted);">Online</span>
+      </div>
+    </header>
+
+    <!-- Messages Container -->
+    <div id="messagesContainer" class="flex-1 overflow-y-auto p-6 space-y-6">
+      <!-- Welcome Message -->
+      <div id="welcomeMessage" class="flex flex-col items-center justify-center h-full text-center">
+        <div class="w-20 h-20 rounded-2xl flex items-center justify-center mb-6" style="background: var(--accent-dim); border: 1px solid var(--accent);">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--accent);">
+            <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+            <path d="M12 12v10"/>
+            <path d="M8 18h8"/>
+            <circle cx="12" cy="6" r="1"/>
+            <path d="M9 6h.01M15 6h.01"/>
+          </svg>
+        </div>
+        <h3 class="text-2xl font-bold mb-2">How can I help you today?</h3>
+        <p class="text-sm max-w-md" style="color: var(--muted);">I'm your AI assistant. Ask me anything about coding, writing, analysis, or creative tasks.</p>
+        
+        <!-- Suggestion Chips -->
+        <div class="flex flex-wrap justify-center gap-3 mt-8">
+          <button class="suggestion-chip px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105" style="background: var(--card); border: 1px solid var(--border); color: var(--fg);">
+            Explain quantum computing
+          </button>
+          <button class="suggestion-chip px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105" style="background: var(--card); border: 1px solid var(--border); color: var(--fg);">
+            Write a Python script
+          </button>
+          <button class="suggestion-chip px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105" style="background: var(--card); border: 1px solid var(--border); color: var(--fg);">
+            Help me brainstorm
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages will be inserted here -->
+      <div id="messagesList" class="space-y-6"></div>
+    </div>
+
+    <!-- Typing Indicator -->
+    <div id="typingIndicator" class="hidden px-6 pb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: var(--accent-dim);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 12h.01M12 12h.01M16 12h.01"/>
+          </svg>
+        </div>
+        <div class="flex items-center gap-1 px-4 py-3 rounded-2xl" style="background: var(--ai-bubble);">
+          <div class="w-2 h-2 rounded-full typing-dot" style="background: var(--accent);"></div>
+          <div class="w-2 h-2 rounded-full typing-dot" style="background: var(--accent);"></div>
+          <div class="w-2 h-2 rounded-full typing-dot" style="background: var(--accent);"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="p-4 border-t" style="background: var(--bg-elevated); border-color: var(--border);">
+      <div class="max-w-4xl mx-auto">
+        <form id="chatForm" class="relative">
+          <textarea 
+            id="messageInput" 
+            class="w-full py-4 px-5 pr-14 rounded-2xl resize-none input-focus-ring font-mono text-sm"
+            style="background: var(--card); border: 1px solid var(--border); color: var(--fg);"
+            placeholder="Type your message..."
+            rows="1"
+            aria-label="Message input"
+          ></textarea>
+          <button 
+            type="submit" 
+            id="sendBtn"
+            class="absolute right-3 bottom-3 w-10 h-10 rounded-xl flex items-center justify-center btn-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            style="background: var(--accent);"
+            disabled
+            aria-label="Send message"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--bg);">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </form>
+        <p class="text-xs text-center mt-3" style="color: var(--muted);">Neural Chat may produce inaccurate information. Verify important details.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ============ STATE MANAGEMENT ============
+    const state = {
+      conversations: [],
+      currentConversationId: null,
+      isTyping: false
+    };
+
+    // ============ DOM ELEMENTS ============
+    const elements = {
+      sidebar: document.getElementById('sidebar'),
+      messagesContainer: document.getElementById('messagesContainer'),
+      messagesList: document.getElementById('messagesList'),
+      welcomeMessage: document.getElementById('welcomeMessage'),
+      chatForm: document.getElementById('chatForm'),
+      messageInput: document.getElementById('messageInput'),
+      sendBtn: document.getElementById('sendBtn'),
+      typingIndicator: document.getElementById('typingIndicator'),
+      chatHistory: document.getElementById('chatHistory'),
+      chatTitle: document.getElementById('chatTitle'),
+      newChatBtn: document.getElementById('newChatBtn'),
+      themeToggle: document.getElementById('themeToggle'),
+      sunIcon: document.getElementById('sunIcon'),
+      moonIcon: document.getElementById('moonIcon'),
+      mobileMenuBtn: document.getElementById('mobileMenuBtn')
+    };
+
+    // ============ AI RESPONSES DATABASE ============
+    const aiResponses = {
+      greeting: [
+        "Hello! I'm your AI assistant. How can I help you today?",
+        "Hi there! What would you like to explore together?",
+        "Greetings! I'm ready to assist with any questions or tasks."
+      ],
+      coding: [
+        "I'd be happy to help with coding! Here's what I can assist with:\n\n• Writing and debugging code\n• Explaining programming concepts\n• Code optimization suggestions\n• Architecture recommendations\n\nWhat specific aspect would you like to explore?",
+        "Great question about programming! Let me break this down:\n\n1. First, we identify the core problem\n2. Then we design a solution approach\n3. Finally, we implement and test\n\nWould you like me to elaborate on any of these steps?"
+      ],
+      general: [
+        "That's an interesting question. Let me think about this...\n\nBased on my analysis, there are several key aspects to consider here. The most important factors include the context, the specific requirements, and the desired outcome.\n\nWould you like me to dive deeper into any particular aspect?",
+        "I understand what you're asking. Here's my perspective:\n\nThis topic has multiple dimensions worth exploring. The key insight is that context matters significantly in determining the best approach.\n\nShall I provide more specific examples?",
+        "Excellent question! Let me provide a comprehensive answer:\n\nThe short answer is that it depends on several variables. However, the most effective approach typically involves a combination of strategy and execution.\n\nWant me to elaborate further?"
+      ],
+      creative: [
+        "Here's a creative approach to your request:\n\nImagine a solution that combines innovation with practicality. The key is to think outside conventional boundaries while maintaining a clear purpose.\n\nWould you like me to develop this idea further?",
+        "I love creative challenges! Let me brainstorm some ideas:\n\n• Concept A: Bold and experimental\n• Concept B: Refined and elegant\n• Concept C: Unexpected and memorable\n\nWhich direction resonates with you?"
+      ]
+    };
+
+    // ============ UTILITY FUNCTIONS ============
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+
+    function getRandomItem(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function detectIntent(message) {
+      const lower = message.toLowerCase();
+      if (lower.match(/hello|hi|hey|greetings/)) return 'greeting';
+      if (lower.match(/code|programming|function|variable|algorithm|debug|script/)) return 'coding';
+      if (lower.match(/write|create|design|imagine|story|idea/)) return 'creative';
+      return 'general';
+    }
+
+    function formatTime(date) {
+      return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // ============ THEME MANAGEMENT ============
+    function initTheme() {
+      const saved = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      setTheme(theme);
+    }
+
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      
+      if (theme === 'light') {
+        elements.sunIcon.classList.remove('hidden');
+        elements.moonIcon.classList.add('hidden');
+      } else {
+        elements.sunIcon.classList.add('hidden');
+        elements.moonIcon.classList.remove('hidden');
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme');
+      setTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    // ============ CONVERSATION MANAGEMENT ============
+    function createConversation() {
+      const conversation = {
+        id: generateId(),
+        title: 'New Conversation',
+        messages: [],
+        createdAt: Date.now()
+      };
+      state.conversations.unshift(conversation);
+      state.currentConversationId = conversation.id;
+      saveConversations();
+      renderChatHistory();
+      clearMessages();
+      elements.welcomeMessage.classList.remove('hidden');
+      elements.chatTitle.textContent = conversation.title;
+      return conversation;
+    }
+
+    function loadConversation(id) {
+      const conversation = state.conversations.find(c => c.id === id);
+      if (conversation) {
+        state.currentConversationId = id;
+        elements.chatTitle.textContent = conversation.title;
+        renderMessages(conversation.messages);
+        elements.welcomeMessage.classList.add('hidden');
+        saveConversations();
+        renderChatHistory();
+      }
+    }
+
+    function deleteConversation(id, e) {
+      e.stopPropagation();
+      state.conversations = state.conversations.filter(c => c.id !== id);
+      if (state.currentConversationId === id) {
+        if (state.conversations.length > 0) {
+          loadConversation(state.conversations[0].id);
+        } else {
+          createConversation();
+        }
+      }
+      saveConversations();
+      renderChatHistory();
+    }
+
+    function saveConversations() {
+      localStorage.setItem('neural-chat-conversations', JSON.stringify(state.conversations));
+    }
+
+    function loadSavedConversations() {
+      const saved = localStorage.getItem('neural-chat-conversations');
+      if (saved) {
+        state.conversations = JSON.parse(saved);
+        renderChatHistory();
+        if (state.conversations.length > 0) {
+          loadConversation(state.conversations[0].id);
+        } else {
+          createConversation();
+        }
+      } else {
+        createConversation();
+      }
+    }
+
+    // ============ MESSAGE RENDERING ============
+    function clearMessages() {
+      elements.messagesList.innerHTML = '';
+    }
+
+    function renderMessages(messages) {
+      clearMessages();
+      messages.forEach((msg, index) => {
+        appendMessage(msg, index === messages.length - 1);
+      });
+      scrollToBottom();
+    }
+
+    function appendMessage(message, animate = true) {
+      const isUser = message.role === 'user';
+      const html = `
+        <div class="flex ${isUser ? 'justify-end' : 'justify-start'} ${animate ? 'message-enter' : ''}" style="animation-delay: ${animate ? '0ms' : '0ms'};">
+          <div class="flex items-start gap-3 max-w-2xl ${isUser ? 'flex-row-reverse' : ''}">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background: ${isUser ? 'var(--user-bubble)' : 'var(--accent-dim)'};">
+              ${isUser ? `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--fg);">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              ` : `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M8 12h.01M12 12h.01M16 12h.01"/>
+                </svg>
+              `}
+            </div>
+            <div class="px-5 py-3 rounded-2xl ${isUser ? 'rounded-tr-md' : 'rounded-tl-md'}" style="background: ${isUser ? 'var(--user-bubble)' : 'var(--ai-bubble)'}; border: 1px solid var(--border);">
+              <p class="text-sm whitespace-pre-wrap leading-relaxed" style="color: var(--fg);">${escapeHtml(message.content)}</p>
+              <p class="text-xs mt-2" style="color: var(--muted);">${formatTime(message.timestamp)}</p>
+            </div>
+          </div>
+        </div>
+      `;
+      elements.messagesList.insertAdjacentHTML('beforeend', html);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function scrollToBottom() {
+      elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
+    }
+
+    // ============ CHAT HISTORY RENDERING ============
+    function renderChatHistory() {
+      elements.chatHistory.innerHTML = state.conversations.map(conv => `
+        <div 
+          class="sidebar-item group flex items-center gap-3 p-3 rounded-xl cursor-pointer border border-transparent ${conv.id === state.currentConversationId ? 'active' : ''}"
+          style="${conv.id === state.currentConversationId ? 'background: var(--accent-dim); border-color: var(--accent);' : ''}"
+          data-id="${conv.id}"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--muted); flex-shrink: 0;">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span class="text-sm truncate flex-1" style="color: var(--fg);">${escapeHtml(conv.title)}</span>
+          <button 
+            class="opacity-0 group-hover:opacity-100 w-6 h-6 rounded flex items-center justify-center transition-opacity"
+            style="background: var(--card);"
+            onclick="deleteConversation('${conv.id}', event)"
+            aria-label="Delete conversation"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--muted);">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+
+      // Add click listeners
+      document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          if (!e.target.closest('button')) {
+            loadConversation(item.dataset.id);
+          }
+        });
+      });
+    }
+
+    // ============ SENDING MESSAGES ============
+    async function sendMessage(content) {
+      if (!content.trim() || state.isTyping) return;
+
+      // Hide welcome message
+      elements.welcomeMessage.classList.add('hidden');
+
+      // Get or create conversation
+      let conversation = state.conversations.find(c => c.id === state.currentConversationId);
+      if (!conversation) {
+        conversation = createConversation();
+      }
+
+      // Add user message
+      const userMessage = {
+        id: generateId(),
+        role: 'user',
+        content: content.trim(),
+        timestamp: Date.now()
+      };
+      conversation.messages.push(userMessage);
+      
+      // Update title if first message
+      if (conversation.messages.length === 1) {
+        conversation.title = content.slice(0, 30) + (content.length > 30 ? '...' : '');
+        elements.chatTitle.textContent = conversation.title;
+        renderChatHistory();
+      }
+
+      appendMessage(userMessage);
+      saveConversations();
+      scrollToBottom();
+
+      // Clear input
+      elements.messageInput.value = '';
+      elements.sendBtn.disabled = true;
+      autoResize();
+
+      // Simulate AI response
+      await simulateAIResponse(conversation);
+    }
+
+    async function simulateAIResponse(conversation) {
+      state.isTyping = true;
+      elements.typingIndicator.classList.remove('hidden');
+      scrollToBottom();
+
+      // Get last user message to detect intent
+      const lastUserMessage = [...conversation.messages].reverse().find(m => m.role === 'user');
+      const intent = detectIntent(lastUserMessage.content);
+      
+      // Simulate typing delay
+      await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1500));
+
+      // Generate response
+      const responsePool = aiResponses[intent] || aiResponses.general;
+      const aiContent = getRandomItem(responsePool);
+
+      const aiMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: aiContent,
+        timestamp: Date.now()
+      };
+      conversation.messages.push(aiMessage);
+      
+      elements.typingIndicator.classList.add('hidden');
+      appendMessage(aiMessage);
+      saveConversations();
+      scrollToBottom();
+      
+      state.isTyping = false;
+    }
+
+    // ============ INPUT HANDLING ============
+    function autoResize() {
+      const textarea = elements.messageInput;
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+
+    // ============ EVENT LISTENERS ============
+    function initEventListeners() {
+      // Form submit
+      elements.chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendMessage(elements.messageInput.value);
+      });
+
+      // Input changes
+      elements.messageInput.addEventListener('input', () => {
+        elements.sendBtn.disabled = !elements.messageInput.value.trim();
+        autoResize();
+      });
+
+      // Enter to send (Shift+Enter for new line)
+      elements.messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (elements.messageInput.value.trim()) {
+            sendMessage(elements.messageInput.value);
+          }
+        }
+      });
+
+      // New chat button
+      elements.newChatBtn.addEventListener('click', () => {
+        createConversation();
+        elements.welcomeMessage.classList.remove('hidden');
+        clearMessages();
+      });
+
+      // Theme toggle
+      elements.themeToggle.addEventListener('click', toggleTheme);
+
+      // Suggestion chips
+      document.querySelectorAll('.suggestion-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          elements.messageInput.value = chip.textContent;
+          elements.sendBtn.disabled = false;
+          elements.messageInput.focus();
+        });
+      });
+
+      // Mobile menu
+      elements.mobileMenuBtn.addEventListener('click', () => {
+        elements.sidebar.classList.toggle('hidden');
+        elements.sidebar.classList.toggle('fixed');
+        elements.sidebar.classList.toggle('z-50');
+        elements.sidebar.classList.toggle('h-full');
+      });
+    }
+
+    // ============ INITIALIZATION ============
+    function init() {
+      initTheme();
+      initEventListeners();
+      loadSavedConversations();
+      elements.messageInput.focus();
+    }
+
+    // Start the app
+    init();
+  </script>
+</body>
+</html>
